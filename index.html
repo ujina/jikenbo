@@ -347,6 +347,12 @@ function startLocal() {
   try { localStorage.setItem(LS + ".t", "1"); localStorage.removeItem(LS + ".t"); }
   catch (e) { $("list").innerHTML = `<tr><td colspan="7" class="empty">このブラウザではデータを保存できません。</td></tr>`; return; }
   mode = "local";
+  if (!localStorage.getItem(LS) && !localStorage.getItem(LS + ".sample")) {
+    const d = today(), now = new Date().toISOString(), id = "sample1";
+    lsWrite({[id]: {no: d.slice(0, 4) + "-001", date: d, name: "建設業許可（新規）", fee: 120000, client: "ユキマサ 行政", addr: "東京都港区虎ノ門四丁目1番28号", cert: "", note: "サンプルです。不要になったら削除してください。",
+      events: [{id: "sample-ev1", date: d, kind: "受任", text: "受託（建設業許可（新規））", at: now}], createdAt: now, updatedAt: now}});
+    localStorage.setItem(LS + ".sample", "1");
+  }
   $("where").textContent = "このパソコンのブラウザに保存しています。定期的に「バックアップを保存」してください。";
   $("bk").hidden = false; $("ePrint").hidden = false;
   afterLocal();
