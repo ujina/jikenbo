@@ -192,7 +192,6 @@ table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-bl
     <div class="stat fee"><small>報酬額の合計</small><b class="num" id="sFee">¥0</b></div>
   </div>
 </header>
-<div class="viewbar" id="viewBar" hidden><span id="vbText">Mac の事件簿データ（iCloud Drive の「事件簿データ.json」）を開いて見られます。閲覧のみで、ここでは書き換えません。</span><button type="button" id="vbPick">データファイルを開いて見る</button><input type="file" id="vbFile" hidden></div>
 <main>
   <section class="form">
     <h2><span id="fTitle">新しい案件を記入</span><span class="editing" id="fEdit" hidden>編集中</span></h2>
@@ -217,7 +216,6 @@ table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-bl
     </form>
   </section>
   <section>
-    <div class="filebar" id="fileBar" hidden><p id="fbText"></p><span class="acts" style="margin:0" id="fbActs"></span></div>
     <div id="listView">
     <div class="tools">
       <input id="q" type="search" placeholder="番号・案件名・依頼者・住所・備考で検索">
@@ -239,14 +237,14 @@ table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-bl
     </div>
     <div class="foot" id="bk" hidden>
       <span>バックアップは別のパソコンへの移し替えにも使えます。</span>
-      <span><button type="button" id="fSwitch" hidden>データファイルを切り替え</button> <button type="button" id="bkSave">バックアップを保存</button> <button type="button" id="bkLoad">バックアップから復元</button><input type="file" id="bkFile" accept=".json,application/json" hidden></span>
+      <span><button type="button" id="bkSave">バックアップを保存</button> <button type="button" id="bkLoad">バックアップから復元</button><input type="file" id="bkFile" accept=".json,application/json" hidden></span>
     </div>
     </div>
     <div id="detail" hidden>
       <button type="button" class="back" id="back">← 一覧に戻る</button>
       <div class="dhead"><span class="dno num" id="dNo2"></span><h3 id="dName"></h3><p id="dSub"></p></div>
       <div class="fold">
-        <input id="fPath" aria-label="この案件のフォルダ" placeholder="この案件のフォルダのパス（例：/Users/toru/Documents/案件/2026-001）">
+        <input id="fPath" aria-label="この案件のフォルダ" placeholder="この案件のフォルダのパス（例：/Users/あなたの名前/Documents/案件/2026-001）">
         <button type="button" id="fSave">保存</button>
         <a class="btn" id="fOpen" href="#" aria-disabled="true">フォルダを開く</a>
         <span class="hint">Finder でフォルダを選び ⌥⌘C（Option＋Command＋C）でパスをコピーして貼り付けます。開くには Mac に「フォルダを開く」ショートカットが必要です。</span>
@@ -327,17 +325,11 @@ const lsRows = () => Object.entries(lsRead()).map(([id, v]) => ({id, ...v}));
 const OFF = "jikenbo.office";
 let office = {};
 function loadOfficeLocal() { try { office = JSON.parse(localStorage.getItem(OFF) || "{}"); } catch (e) { office = {}; } }
-const newKey = () => col ? col.doc().id : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const newKey = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 async function put(id, body) {
-  if (mode === "view") throw new Error("readonly");
-  if (mode === "cloud") return col.doc(id).set(body);
-  if (mode === "file") { await fileSync(); fdata.rows[id] = {...body, updatedAt: new Date().toISOString()}; await fileWrite(); return afterFile(); }
   const o = lsRead(); o[id] = body; lsWrite(o); afterLocal();
 }
 async function drop(id) {
-  if (mode === "view") throw new Error("readonly");
-  if (mode === "cloud") return col.doc(id).delete();
-  if (mode === "file") { await fileSync(); fdata.rows[id] = {deleted: true, updatedAt: new Date().toISOString()}; await fileWrite(); return afterFile(); }
   const o = lsRead(); delete o[id]; lsWrite(o); afterLocal();
 }
 function afterLocal() {
@@ -360,101 +352,6 @@ function startLocal() {
   afterLocal();
   $("no").value = nextNo($("date").value);
 }
-
-// ---------- iCloud Drive などのデータファイル ----------
-const FS_OK = "showSaveFilePicker" in window && "indexedDB" in window;
-let fh = null, fdata = {rows: {}, office: {}, officeAt: ""};
-const idb = (op, val) => new Promise((ok, ng) => {
-  const rq = indexedDB.open("jikenbo", 1);
-  rq.onupgradeneeded = () => rq.result.createObjectStore("kv");
-  rq.onerror = () => ng(rq.error);
-  rq.onsuccess = () => { try { const tx = rq.result.transaction("kv", op === "get" ? "readonly" : "readwrite"); const st = tx.objectStore("kv");
-    const r = op === "get" ? st.get("fh") : op === "del" ? st.delete("fh") : st.put(val, "fh"); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); } catch (e) { ng(e); } };
-});
-async function fileRead() {
-  const t = await (await fh.getFile()).text();
-  if (!t.trim()) return {rows: {}, office: {}, officeAt: ""};
-  const j = JSON.parse(t);
-  if (j.app !== "jikenbo") throw new Error("notjikenbo");
-  return {rows: j.rows || {}, office: j.office || {}, officeAt: j.officeAt || ""};
-}
-function mergeData(a, b) {
-  const out = {...a.rows};
-  Object.entries(b.rows || {}).forEach(([id, v]) => { if (!out[id] || (v.updatedAt || "") > (out[id].updatedAt || "")) out[id] = v; });
-  const bNew = (b.officeAt || "") > (a.officeAt || "");
-  return {rows: out, office: bNew ? (b.office || {}) : (a.office || {}), officeAt: bNew ? b.officeAt : a.officeAt};
-}
-async function fileSync() { fdata = mergeData(fdata, await fileRead()); }
-async function fileWrite() {
-  const w = await fh.createWritable();
-  await w.write(JSON.stringify({app: "jikenbo", v: 2, savedAt: new Date().toISOString(), rows: fdata.rows, office: fdata.office, officeAt: fdata.officeAt}, null, 1));
-  await w.close();
-}
-function afterFile() {
-  office = {...fdata.office};
-  rows = Object.entries(fdata.rows).filter(([, v]) => !v.deleted).map(([id, v]) => ({id, ...v}));
-  fillYears(); fillNames();
-  if (editId && !rows.find(r => r.id === editId)) resetForm(); else render();
-}
-function bar(html, acts) {
-  $("fbText").innerHTML = html;
-  $("fbActs").innerHTML = acts.map(([id, label, pri]) => `<button type="button" id="${id}"${pri ? ' class="pri"' : ""}>${label}</button>`).join("");
-  $("fileBar").hidden = false;
-}
-async function connectFile(handle, migrate) {
-  fh = handle;
-  fdata = {rows: {}, office: {}, officeAt: ""};
-  await fileSync();
-  if (migrate && localStorage.getItem(LS + ".moved") !== "1") {
-    const loc = {rows: lsRead(), office: (() => { try { return JSON.parse(localStorage.getItem(OFF) || "{}"); } catch (e) { return {}; } })(), officeAt: ""};
-    const n0 = Object.keys(fdata.rows).length;
-    fdata = mergeData(loc, fdata);
-    if (!fdata.office.oName && loc.office.oName) { fdata.office = loc.office; fdata.officeAt = new Date().toISOString(); }
-    if (Object.keys(fdata.rows).length !== n0 || Object.keys(loc.rows).length) await fileWrite();
-    localStorage.setItem(LS + ".moved", "1");
-  }
-  try { await idb("put", fh); } catch (e) {}
-  mode = "file";
-  $("fileBar").hidden = true;
-  $("where").textContent = "データファイル「" + fh.name + "」に保存しています。iCloud Drive に置けば、もう一台の Mac と同期されます。";
-  $("bk").hidden = false; $("ePrint").hidden = false; $("fSwitch").hidden = false;
-  afterFile();
-  if (!editId) $("no").value = nextNo($("date").value);
-}
-const PICK = {types: [{description: "事件簿データ", accept: {"application/json": [".json"]}}]};
-async function pickNew() {
-  try { const h = await window.showSaveFilePicker({...PICK, suggestedName: "事件簿データ.json"}); const w = await h.createWritable(); await w.write(""); await w.close(); await connectFile(h, true); }
-  catch (e) { if (e && e.name !== "AbortError") msg("データファイルを作れませんでした。", true); }
-}
-async function pickOpen() {
-  try { const [h] = await window.showOpenFilePicker(PICK); await connectFile(h, true); }
-  catch (e) { if (e && e.name === "AbortError") return; msg(e && e.message === "notjikenbo" ? "このファイルは事件簿のデータではありません。" : "データファイルを開けませんでした。", true); }
-}
-function setupBar() {
-  bar(`<b>データファイルを決めてください</b>iCloud Drive にデータファイルを置くと、Mac mini と MacBook Air で同じ記録を使えます。1台目は「新しく作る」、2台目は「既存のファイルを開く」を選びます。いまこのブラウザにある記録は、自動でファイルに移します。`,
-    [["fbNew", "新しく作る", true], ["fbOpen", "既存のファイルを開く"]]);
-  $("fbNew").onclick = pickNew; $("fbOpen").onclick = pickOpen;
-}
-async function startFileMode() {
-  let h = null;
-  try { h = await idb("get"); } catch (e) {}
-  if (!h) { startLocal(); setupBar(); return; }
-  let p = "prompt";
-  try { p = await h.queryPermission({mode: "readwrite"}); } catch (e) {}
-  if (p === "granted") { try { await connectFile(h, false); return; } catch (e) {} }
-  $("list").innerHTML = `<tr><td colspan="7" class="empty">データファイルへの接続を待っています。</td></tr>`;
-  bar(`<b>データファイル「${esc(h.name)}」に接続します</b>ボタンを押して、ファイルの読み書きを許可してください。Chrome で「毎回許可する」を選ぶと、次からはこの確認が出なくなります。`,
-    [["fbGo", "接続する", true], ["fbOther", "別のファイルを選ぶ"]]);
-  $("fbGo").onclick = async () => {
-    try { if (await h.requestPermission({mode: "readwrite"}) === "granted") await connectFile(h, false); }
-    catch (e) { msg("データファイルを開けませんでした。iCloud Drive にファイルがあるか確かめてください。", true); }
-  };
-  $("fbOther").onclick = () => { setupBar(); };
-}
-document.addEventListener("visibilitychange", async () => {
-  if (document.visibilityState !== "visible" || mode !== "file") return;
-  try { await fileSync(); afterFile(); } catch (e) {}
-});
 
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const yen = n => (n === null || n === undefined || n === "" || isNaN(n)) ? "" : "¥" + Number(n).toLocaleString("ja-JP");
@@ -819,9 +716,7 @@ $("eSave").addEventListener("click", () => saveEst(false));
 $("oSave").addEventListener("click", async () => {
   OFFK.forEach(k => office[k] = $(k).value.trim());
   try {
-    if (mode === "cloud") await col.doc("_office").set({...office});
-    else if (mode === "file") { await fileSync(); fdata.office = {...office}; fdata.officeAt = new Date().toISOString(); await fileWrite(); }
-    else localStorage.setItem(OFF, JSON.stringify(office));
+    localStorage.setItem(OFF, JSON.stringify(office));
     $("eMsg").textContent = "事務所の情報を保存しました。"; $("offBox").open = false;
   } catch (e) { $("eMsg").textContent = "事務所の情報を保存できませんでした。"; }
 });
@@ -842,49 +737,20 @@ $("ePdf").addEventListener("click", async () => {
     do { if (y > 0) pdf.addPage(); pdf.addImage(img, "JPEG", 0, -y, W, ph); y += H; } while (y < ph - 1);
     const blob = pdf.output("blob");
     const name = "見積書_" + (est.no || r.no) + "_" + (r.client || "") + ".pdf";
-    if (mode === "local") saveFile(name, blob);
-    else { const dl = await claude.use("downloads"); if (!dl) throw new Error("dl"); await dl.save({filename: name, data: blob}); }
+    saveFile(name, blob);
     $("eMsg").textContent = "PDFを保存しました。";
   } catch (e) {
-    $("eMsg").textContent = (e && e.code === "declined") ? "保存をやめました。" : "PDFを作れませんでした。インターネットにつながっているか確かめてください。" + (mode === "local" ? "「印刷」からPDFとして保存することもできます。" : "");
+    $("eMsg").textContent = "PDFを作れませんでした。インターネットにつながっているか確かめてください。「印刷」からPDFとして保存することもできます。";
   } finally { $("ePdf").disabled = false; }
 });
 $("ePrint").addEventListener("click", async () => { await saveEst(true); window.print(); });
-
-// ---------- 閲覧モード（iPhone など） ----------
-function showViewBar() { $("viewBar").hidden = false; }
-$("vbPick").addEventListener("click", () => $("vbFile").click());
-$("vbFile").addEventListener("change", async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  try {
-    const j = JSON.parse(await f.text());
-    if (j.app !== "jikenbo" || typeof j.rows !== "object") throw 0;
-    mode = "view";
-    document.documentElement.classList.add("ro");
-    office = {...(j.office || {})};
-    rows = Object.entries(j.rows).filter(([, v]) => !v.deleted).map(([id, v]) => ({id, ...v}));
-    const t = j.savedAt ? new Date(j.savedAt) : null;
-    $("vbText").innerHTML = `<b>閲覧中：</b>${esc(f.name)}` + (t ? `（${t.getMonth() + 1}月${t.getDate()}日 ${pad(t.getHours(), 2)}:${pad(t.getMinutes(), 2)}）` : "");
-    $("vbPick").textContent = "読み込み直す";
-    $("where").textContent = "";
-    fillYears(); fillNames();
-    resetForm();
-  } catch (err) {
-    $("vbText").textContent = "このファイルは事件簿のデータではありません。iCloud Drive の「事件簿データ.json」を選んでください。";
-  }
-});
 
 const HEAD = ["受託番号", "受託年月日", "依頼者の住所", "依頼者の氏名", "案件の名称", "報酬額", "職務上請求書№", "備考"];
 const lines = () => view().slice().reverse().map(r => [r.no, fmtDate(r.date), r.addr, r.client, r.name, r.fee ?? "", r.cert, r.note]);
 $("csv").addEventListener("click", async () => {
   const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
   const text = "﻿" + [HEAD, ...lines()].map(a => a.map(q).join(",")).join("\r\n");
-  if (mode === "local") { saveFile("事件簿_" + today() + ".csv", text, "text/csv"); return; }
-  try {
-    const dl = await claude.use("downloads");
-    if (!dl) throw 0;
-    await dl.save({filename: "事件簿_" + today() + ".csv", data: text});
-  } catch (e) { msg("CSVを保存できませんでした。「表をコピー」をお使いください。", true); }
+  saveFile("事件簿_" + today() + ".csv", text, "text/csv");
 });
 $("copy").addEventListener("click", async () => {
   const text = [HEAD, ...lines()].map(a => a.map(v => String(v).replace(/[\t\n]/g, " ")).join("\t")).join("\n");
@@ -896,9 +762,8 @@ $("date").value = today();
 $("no").value = nextNo(today());
 fillNames();
 
-$("fSwitch").addEventListener("click", setupBar);
 $("bkSave").addEventListener("click", () => {
-  const o = mode === "file" ? Object.fromEntries(Object.entries(fdata.rows).filter(([, v]) => !v.deleted)) : lsRead();
+  const o = lsRead();
   saveFile("事件簿バックアップ_" + today() + ".json", JSON.stringify({app: "jikenbo", v: 1, savedAt: new Date().toISOString(), rows: o, office}, null, 1), "application/json");
   msg("バックアップを保存しました（" + Object.keys(o).length + "件）。");
 });
@@ -908,12 +773,6 @@ $("bkFile").addEventListener("change", async e => {
   try {
     const j = JSON.parse(await f.text());
     if (j.app !== "jikenbo" || typeof j.rows !== "object") throw 0;
-    if (mode === "file") {
-      await fileSync(); let n = 0;
-      Object.entries(j.rows).forEach(([id, v]) => { const c = fdata.rows[id]; if (!c || (v.updatedAt || "") > (c.updatedAt || "")) { fdata.rows[id] = v; n++; } });
-      if (j.office && !fdata.office.oName) { fdata.office = j.office; fdata.officeAt = new Date().toISOString(); }
-      await fileWrite(); afterFile(); msg("バックアップから " + n + " 件を読み込みました。"); return;
-    }
     const o = lsRead(); let n = 0;
     Object.entries(j.rows).forEach(([id, v]) => { if (!o[id] || (v.updatedAt || "") > (o[id].updatedAt || "")) { o[id] = v; n++; } });
     if (j.office && !localStorage.getItem(OFF)) localStorage.setItem(OFF, JSON.stringify(j.office));
@@ -922,36 +781,7 @@ $("bkFile").addEventListener("change", async e => {
   } catch (err) { msg("このファイルは事件簿のバックアップではありません。", true); }
 });
 
-if (location.protocol === "file:" || typeof window.claude === "undefined" || !window.claude || typeof window.claude.use !== "function") { if (FS_OK) startFileMode(); else { document.documentElement.classList.add("ro"); showViewBar(); $("list").innerHTML = `<tr><td colspan="7" class="empty">上の「データファイルを開いて見る」から、事件簿データ.json を選んでください。</td></tr>`; } }
-else (async () => {
-  const timer = setTimeout(() => { if (!rows.length) $("list").innerHTML = `<tr><td colspan="7" class="empty">保存先に接続できません。しばらくしてから開き直してください。</td></tr>`; }, 10000);
-  try {
-    const [d, u] = await Promise.all([claude.use("db"), claude.use("user")]);
-    const uid = u ? await u.id() : null;
-    showViewBar();
-    if (!d || !uid) { clearTimeout(timer); $("list").innerHTML = `<tr><td colspan="7" class="empty">この画面では保存先を使えません。claude.ai にサインインして開いてください。</td></tr>`; return; }
-    db = d; col = db.collection("data/users/" + uid); mode = "cloud";
-    $("where").textContent = "claude.ai のあなた専用の保存先に保存しています。";
-    let first = true;
-    col.onSnapshot(snap => {
-      if (mode === "view") return;
-      if (!snap.metadata.fromCache) clearTimeout(timer);
-      const offDoc = snap.docs.find(s => s.id === "_office");
-      office = offDoc ? {...offDoc.data()} : {};
-      rows = snap.docs.filter(s => !s.id.startsWith("_")).map(s => ({id: s.id, ...s.data()}));
-      fillYears(); fillNames();
-      if (first && !editId) { $("no").value = nextNo($("date").value); first = false; }
-      if (editId && !rows.find(r => r.id === editId)) resetForm(); else render();
-    }, err => {
-      clearTimeout(timer);
-      $("list").innerHTML = `<tr><td colspan="7" class="empty">データを読み込めませんでした。</td></tr>`;
-    });
-  } catch (e) {
-    clearTimeout(timer);
-    $("list").innerHTML = `<tr><td colspan="7" class="empty">保存先に接続できませんでした。</td></tr>`;
-    showViewBar();
-  }
-})();
+startLocal();
 }
 </script>
 </body>
