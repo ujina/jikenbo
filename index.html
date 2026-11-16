@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>事件簿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=Noto+Sans+JP:wght@400;500;700&family=Sofia+Sans+Condensed:wght@600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE: 事務所の帳簿。静かで正確、迷わず書ける。
+   IDEA: 罫線の入った事件簿の台帳と、朱肉の印。
+   PICTURE: 入力欄と一覧そのもの。朱色は保存ボタンと合計だけ。
+   COLOUR and TYPE: 白地に墨色、朱 #e8401c を一点。BIZ UDPGothic、数字は Sofia Sans Condensed。
+   LAYOUT: 上に件数と報酬合計、左に記入欄、右に一覧。狭い画面では縦に積む。 */
+:root{color-scheme:light dark;
+--bg:light-dark(#ffffff,#121010);--ink:light-dark(#16161a,#ece8e4);--mute:light-dark(#62626a,#a39d97);
+--line:light-dark(#dcdad6,#34302d);--soft:light-dark(#f5f4f1,#1c1917);--shu:light-dark(#e8401c,#ff6a45);
+--shu-ink:#fff;--hi:light-dark(#fff3ee,#2a1712)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "BIZ UDPGothic","Hiragino Sans","Yu Gothic",sans-serif;overflow-x:clip}
+.num{font-family:"Sofia Sans Condensed","BIZ UDPGothic",sans-serif;font-variant-numeric:tabular-nums}
+header{padding:16px max(4vw,16px) 12px;border-bottom:2px solid var(--ink);display:flex;flex-wrap:wrap;align-items:flex-end;gap:16px 40px}
+h1{margin:0;font-size:32px;line-height:1.05;letter-spacing:.08em;display:flex;align-items:center;gap:14px}
+.seal{width:40px;height:40px;border:2.5px solid var(--shu);color:var(--shu);border-radius:6px;display:grid;place-items:center;font-size:15px;letter-spacing:0;line-height:1.05;text-align:center;transform:rotate(-4deg)}
+.stats{display:flex;gap:32px;margin-left:auto;flex-wrap:wrap}
+.stat small{display:block;font-size:13px;color:var(--mute)}
+.stat b{font-size:34px;font-weight:800;line-height:1}
+.stat.fee b{color:var(--shu)}
+main{display:grid;grid-template-columns:minmax(0,544px) minmax(0,1fr);gap:0;max-width:1900px}
+@media(max-width:1150px){main{grid-template-columns:minmax(0,1fr)}}
+section{padding:22px max(4vw,16px)}
+.form{border-right:1px solid var(--line);background:var(--soft);padding-top:14px;padding-bottom:14px}
+.form .f{margin-bottom:9px}
+.form label{font-size:14px;margin-bottom:2px}
+.form input{min-height:42px;padding:7px 11px;font-size:17px}
+.form textarea{min-height:58px;padding:7px 11px;font-size:17px}
+.form h2{margin-bottom:8px}
+.form .acts{margin-top:4px}
+.form .msg{margin-top:4px}
+@media(max-width:1150px){.form{border-right:0;border-bottom:1px solid var(--line)}}
+h2{font-size:20px;margin:0 0 14px;display:flex;justify-content:space-between;align-items:center;gap:12px}
+.editing{white-space:nowrap}
+label{display:block;font-size:15px;color:var(--mute);margin:0 0 4px}
+.f{margin-bottom:16px}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;text-align:left}
+input,textarea,select{width:100%;font:inherit;font-size:18px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:11px 12px;min-height:50px}
+textarea{min-height:96px;resize:vertical}
+input:focus,textarea:focus,select:focus,button:focus-visible{outline:2px solid var(--shu);outline-offset:1px}
+.req{color:var(--shu)}
+button{font:inherit;font-size:16px;min-height:48px;white-space:nowrap;padding:0 16px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer}
+button.pri{background:var(--shu);border-color:var(--shu);color:var(--shu-ink);font-weight:700}
+button.ghost{border-color:transparent;background:transparent;color:var(--mute);padding:0 8px}
+button:disabled{opacity:.5;cursor:default}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.acts .pri{flex:1;font-size:18px}
+.editing{font-size:13px;color:var(--shu);font-weight:700}
+.tools{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;align-items:center}
+.tools input{flex:1 1 220px}
+.foot{font-size:14px}
+.tools select{flex:0 0 auto;width:auto}
+.wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:18px}
+th{font-size:15px;color:var(--mute);font-weight:400;text-align:left;padding:8px 10px;border-bottom:2px solid var(--ink);white-space:nowrap}
+td{padding:12px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+td.r,th.r{text-align:right;white-space:nowrap}
+td.no{font-weight:700;white-space:nowrap}
+td.dt{white-space:nowrap}
+.wa{display:block;font-size:14px;color:var(--mute)}
+.cl b{display:block;font-size:22px;line-height:1.3;color:var(--ink)}
+td.nm1{font-size:15px}
+.cl span span{font-size:15px;color:var(--mute)}
+.note{font-size:15px;color:var(--mute);white-space:pre-wrap}
+tbody tr{cursor:pointer}
+tbody tr:hover{background:var(--soft)}
+tbody tr.sel{background:var(--hi)}
+.latest{display:block;font-size:14px;color:var(--mute);margin-top:2px}
+.latest b{color:var(--shu);font-weight:700}
+.back{margin-bottom:16px}
+.dhead{border-bottom:2px solid var(--ink);padding-bottom:14px;margin-bottom:18px;display:flex;flex-wrap:wrap;gap:6px 24px;align-items:baseline}
+.dhead .dno{font-size:22px;font-weight:800}
+.dhead h3{margin:0;font-size:26px;line-height:1.25}
+.dhead p{margin:0;width:100%;color:var(--mute);font-size:16px}
+.dhead p span:first-child{color:var(--ink);font-weight:700}
+.evf{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:22px}
+.evrow{display:grid;grid-template-columns:minmax(0,190px) minmax(0,220px) minmax(0,1fr);gap:10px}
+@media(max-width:700px){.evrow{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.evrow .f:last-child{grid-column:1/-1}}
+.tl{list-style:none;margin:0;padding:0}
+.tl li{display:grid;grid-template-columns:minmax(0,150px) 22px minmax(0,1fr);gap:0 12px;cursor:pointer}
+.tl li:hover .ev{background:var(--soft)}
+.tl .when{text-align:right;padding-top:10px}
+.tl .when b{display:block;font-size:19px}
+.tl .when span{font-size:13px;color:var(--mute)}
+.tl .rail{position:relative}
+.tl .rail::before{content:"";position:absolute;left:10px;top:0;bottom:0;width:2px;background:var(--line)}
+.tl li:first-child .rail::before{top:18px}
+.tl li:last-child .rail::before{bottom:calc(100% - 18px)}
+.tl .rail::after{content:"";position:absolute;left:4px;top:14px;width:14px;height:14px;border-radius:50%;background:var(--bg);border:3px solid var(--ink)}
+.tl li.done .rail::after{background:var(--shu);border-color:var(--shu)}
+.tl li.sel .ev{background:var(--hi)}
+.tl .ev{padding:8px 12px 18px;border-radius:6px;font-size:18px}
+.tl .kind{display:inline-block;font-size:14px;font-weight:700;padding:1px 10px;border-radius:99px;border:1.5px solid var(--ink);margin-bottom:4px}
+.tl li.done .kind{border-color:var(--shu);color:var(--shu)}
+.tl .txt{white-space:pre-wrap}
+@media(max-width:600px){.tl li{grid-template-columns:minmax(0,96px) 22px minmax(0,1fr);gap:0 8px}.tl .when b{font-size:16px}}
+.fold{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:-6px 0 18px}
+.fold input{flex:1 1 320px;font-size:15px}
+a.btn{display:inline-flex;align-items:center;justify-content:center;min-height:48px;padding:0 16px;border-radius:6px;background:var(--ink);color:var(--bg);text-decoration:none;font-size:16px;font-weight:700;white-space:nowrap}
+a.btn[aria-disabled=true]{opacity:.35;pointer-events:none}
+.fold .hint{width:100%;font-size:13px;color:var(--mute)}
+.filebar{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:center;border:1.5px solid var(--shu);background:var(--hi);border-radius:8px;padding:14px 16px;margin-bottom:18px}
+.filebar p{margin:0;flex:1 1 360px;font-size:15px}
+.filebar p b{display:block;font-size:17px;margin-bottom:2px}
+.viewbar{margin:14px max(4vw,16px) 14px!important;max-width:1800px;display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:15px}
+.viewbar span{flex:1 1 260px}
+.ro main{grid-template-columns:minmax(0,1fr)}
+.ro .form,.ro #evf,.ro .fold,.ro #offBox,.ro #eSave,.ro #eAdd,.ro #ePrint,.ro #bk,.ro .items .x,.ro .items .up,.ro #pgEst .msg:first-of-type{display:none!important}
+.ro #listView .foot span:first-child{display:none}
+.ro .tl li{cursor:default}
+.ro .cl span span{display:none}
+.ro .cl b{font-size:28px;line-height:1.25;color:var(--ink)}
+.ro .dhead p{font-size:17px;color:var(--ink)}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:18px}
+.tabs button{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;font-size:17px;color:var(--mute);padding:0 18px}
+.tabs button.on{border-bottom-color:var(--shu);color:var(--ink);font-weight:700}
+.est{display:grid;gap:18px}
+.box{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:16px}
+.box summary{cursor:pointer;font-weight:700;font-size:17px;min-height:32px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media(max-width:700px){.grid3,.grid2{grid-template-columns:minmax(0,1fr)}}
+.items{width:100%;border-collapse:collapse;font-size:16px}
+.items th{font-size:14px;border-bottom:1px solid var(--line);padding:6px 4px}
+.items td{border:0;padding:4px}
+.items input,.items select{min-height:44px;font-size:16px;padding:8px}
+.items .q{width:70px}.items .u{width:70px}.items .up{width:44px;padding:0;color:var(--mute)}.items .p{width:130px}.items .k{width:150px}
+.items .amt{text-align:right;white-space:nowrap;padding-right:8px;width:110px}
+.items .x{width:44px;padding:0;color:var(--mute)}
+@media(max-width:700px){.items thead{display:none}.items tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 44px;gap:4px;padding:8px 0;border-bottom:1px solid var(--line)}.items td:first-child{grid-column:1/-1}.items .q,.items .p,.items .k{width:auto}.items .amt{grid-column:1/3}}
+.paperwrap{overflow:auto;background:light-dark(#e9e7e3,#2a2725);border-radius:8px;padding:20px}
+#paper{width:794px;min-height:1123px;margin:0 auto;background:#fff;color:#111;padding:44px 46px 56px;font:13px/1.45 "Noto Sans JP","BIZ UDPGothic",sans-serif;box-shadow:0 2px 10px rgba(0,0,0,.15)}
+#paper .pmeta{text-align:right;font-weight:500;line-height:2.1}
+#paper h1{text-align:center;font-size:32px;font-weight:500;margin:14px 0 46px;letter-spacing:.02em;color:#111;display:block}
+#paper .mid{display:grid;grid-template-columns:357px 1fr;gap:0 85px;margin-bottom:28px}
+#paper .nm{font-size:19px;font-weight:500;text-decoration:underline;text-underline-offset:4px;margin:4px 0 16px}
+#paper .subj,#paper .lead{margin:0 0 16px}
+#paper .sum{display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px solid #111;padding:16px 0 4px;font-size:17px;font-weight:500}
+#paper .from{line-height:1.35}
+#paper .from .on{font-size:15px;font-weight:500;line-height:1.4}
+#paper .from .gap{height:14px}
+#paper table{border-collapse:collapse;font-size:13px}
+#paper .it{width:100%}
+#paper .it th{background:#d9d9d9;color:#111;font-weight:700;border:1px solid #111;padding:7px 10px;text-align:center}
+#paper .it td{border:1px solid #111;padding:7px 10px;height:34px;color:#111}
+#paper .it td.nm2{white-space:pre-wrap}
+#paper td.n{text-align:right;white-space:nowrap}
+#paper .it tr.tt td:not(.tl2){border:0}
+#paper .it tr.tt td.tl2{border:1px solid #111}
+#paper .brk{margin:12px 0 0 auto;width:432px}
+#paper .brk td{border:1px solid #111;padding:7px 10px;height:34px}
+#paper .brk td.dl{border-right:1.5px dotted #111}
+#paper .brk td.dr{border-left:0}
+#paper .pnote{margin-top:22px;white-space:pre-wrap;font-size:13px}
+@media print{body *{visibility:hidden}#paper,#paper *{visibility:visible}#paper{position:absolute;left:0;top:0;box-shadow:none;margin:0}@page{size:A4;margin:0}}
+.empty{padding:40px 10px;text-align:center;color:var(--mute)}
+.msg{font-size:13px;color:var(--mute);min-height:20px;margin-top:8px}
+.msg.err{color:var(--shu)}
+.foot{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:12px;font-size:13px;color:var(--mute)}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 8px 8px 16px;border-radius:8px;display:none;align-items:center;gap:12px;font-size:14px;z-index:9}
+.toast.on{display:flex}
+.toast button{min-height:36px;background:transparent;color:var(--bg);border-color:var(--bg)}
+.dlg{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;place-items:center;z-index:10;padding:16px}
+.dlg.on{display:grid}
+.dlg div{background:var(--bg);border-radius:10px;padding:22px;max-width:380px;width:100%}
+.dlg p{margin:0 0 16px}
+@media(max-width:600px){h1{font-size:30px}.stats{margin-left:0}
+table{font-size:14px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}
+.stack td{display:flex;justify-content:space-between;gap:12px;border:0;padding:3px 4px;text-align:right}
+.stack td::before{content:attr(data-l);color:var(--mute);font-size:12px;text-align:left;flex:0 0 auto}
+.stack td>*{text-align:right}}
+@media(prefers-reduced-motion:no-preference){tbody tr.new{animation:fl 1.2s ease-out}@keyframes fl{from{background:var(--hi)}to{background:transparent}}}
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="seal">事件<br>簿</span>事件簿</h1>
+  <div class="stats">
+    <div class="stat"><small id="sLabel">表示中の件数</small><b class="num" id="sCount">0</b></div>
+    <div class="stat fee"><small>報酬額の合計</small><b class="num" id="sFee">¥0</b></div>
+  </div>
+</header>
+<div class="viewbar" id="viewBar" hidden><span id="vbText">Mac の事件簿データ（iCloud Drive の「事件簿データ.json」）を開いて見られます。閲覧のみで、ここでは書き換えません。</span><button type="button" id="vbPick">データファイルを開いて見る</button><input type="file" id="vbFile" hidden></div>
+<main>
+  <section class="form">
+    <h2><span id="fTitle">新しい案件を記入</span><span class="editing" id="fEdit" hidden>編集中</span></h2>
+    <form id="frm" autocomplete="off">
+      <div class="row2">
+        <div class="f"><label for="no">受託番号 <span class="req">*</span></label><input id="no" class="num" required></div>
+        <div class="f"><label for="date">受託年月日 <span class="req">*</span></label><input id="date" type="date" required></div>
+      </div>
+      <div class="f"><label for="name">案件の名称 <span class="req">*</span></label><input id="name" list="names" required placeholder="例：建設業許可申請（新規）"></div>
+      <datalist id="names"></datalist>
+      <div class="f"><label for="fee">報酬額（円）</label><input id="fee" class="num" inputmode="numeric" placeholder="例：120000"></div>
+      <div class="f"><label for="client">依頼者の氏名 <span class="req">*</span></label><input id="client" required></div>
+      <div class="f"><label for="addr">依頼者の住所</label><input id="addr"></div>
+      <div class="f"><label for="cert">職務上請求書№（使用した場合に記入）</label><input id="cert" class="num"></div>
+      <div class="f"><label for="note">備考</label><textarea id="note"></textarea></div>
+      <div class="acts">
+        <button type="submit" class="pri" id="save">保存する</button>
+        <button type="button" id="clear">新規に戻る</button>
+        <button type="button" class="ghost" id="del" hidden>削除</button>
+      </div>
+      <div class="msg" id="msg"></div>
+    </form>
+  </section>
+  <section>
+    <div class="filebar" id="fileBar" hidden><p id="fbText"></p><span class="acts" style="margin:0" id="fbActs"></span></div>
+    <div id="listView">
+    <div class="tools">
+      <input id="q" type="search" placeholder="番号・案件名・依頼者・住所・備考で検索">
+      <select id="yr" aria-label="年"><option value="">すべての年</option></select>
+      <select id="sort" aria-label="並び順">
+        <option value="desc">新しい順</option>
+        <option value="asc">古い順</option>
+      </select>
+    </div>
+    <div class="wrap">
+      <table class="stack">
+        <thead><tr><th>受託番号</th><th>受託年月日</th><th>依頼者の住所氏名</th><th>案件の名称</th><th class="r">報酬額</th><th>職務上請求書№</th><th>備考</th></tr></thead>
+        <tbody id="list"><tr><td colspan="7" class="empty">読み込み中…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <span>行をクリックすると、その案件の経過記録を開きます。<br><span id="where"></span></span>
+      <span><button type="button" id="csv">CSVで保存</button> <button type="button" id="copy">表をコピー</button></span>
+    </div>
+    <div class="foot" id="bk" hidden>
+      <span>バックアップは別のパソコンへの移し替えにも使えます。</span>
+      <span><button type="button" id="fSwitch" hidden>データファイルを切り替え</button> <button type="button" id="bkSave">バックアップを保存</button> <button type="button" id="bkLoad">バックアップから復元</button><input type="file" id="bkFile" accept=".json,application/json" hidden></span>
+    </div>
+    </div>
+    <div id="detail" hidden>
+      <button type="button" class="back" id="back">← 一覧に戻る</button>
+      <div class="dhead"><span class="dno num" id="dNo2"></span><h3 id="dName"></h3><p id="dSub"></p></div>
+      <div class="fold">
+        <input id="fPath" aria-label="この案件のフォルダ" placeholder="この案件のフォルダのパス（例：/Users/toru/Documents/案件/2026-001）">
+        <button type="button" id="fSave">保存</button>
+        <a class="btn" id="fOpen" href="#" aria-disabled="true">フォルダを開く</a>
+        <span class="hint">Finder でフォルダを選び ⌥⌘C（Option＋Command＋C）でパスをコピーして貼り付けます。開くには Mac に「フォルダを開く」ショートカットが必要です。</span>
+      </div>
+      <div class="tabs"><button type="button" id="tabEv" class="on">経過記録</button><button type="button" id="tabEst">見積書</button></div>
+      <div id="pgEv">
+      <form class="evf" id="evf" autocomplete="off">
+        <h2><span id="evTitle">経過を記録する</span></h2>
+        <div class="evrow">
+          <div class="f"><label for="evDate">日付 <span class="req">*</span></label><input id="evDate" type="date" required></div>
+          <div class="f"><label for="evKind">区分</label><input id="evKind" list="kinds" placeholder="例：申請"></div>
+          <div class="f"><label for="evText">内容 <span class="req">*</span></label><input id="evText" required placeholder="例：広島県東部建設事務所に申請書を提出"></div>
+        </div>
+        <datalist id="kinds"></datalist>
+        <div class="acts">
+          <button type="submit" class="pri" id="evSave">記録する</button>
+          <button type="button" id="evCancel" hidden>編集をやめる</button>
+          <button type="button" class="ghost" id="evDel" hidden>この記録を削除</button>
+        </div>
+      </form>
+      <ol class="tl" id="tl"></ol>
+      </div>
+      <div id="pgEst" class="est" hidden>
+        <details class="box" id="offBox"><summary>差出人（事務所）の情報</summary>
+          <p class="msg" style="margin:4px 0 10px">一度入れれば、すべての見積書に使われます。</p>
+          <div class="grid2">
+            <div class="f"><label for="oName">事務所名</label><input id="oName" placeholder="例：宇品行政書士事務所"></div>
+            <div class="f"><label for="oPerson">行政書士 氏名</label><input id="oPerson"></div>
+            <div class="f"><label for="oZip">郵便番号</label><input id="oZip" class="num" placeholder="例：734-0014"></div>
+            <div class="f"><label for="oAddr">住所（改行した位置で改行されます）</label><textarea id="oAddr"></textarea></div>
+            <div class="f"><label for="oTel">電話</label><input id="oTel" inputmode="tel"></div>
+            <div class="f"><label for="oFax">FAX</label><input id="oFax" inputmode="tel"></div>
+            <div class="f"><label for="oMail">メール</label><input id="oMail" type="email"></div>
+            <div class="f"><label for="oReg">行政書士 登録番号</label><input id="oReg" class="num" placeholder="例：第12345678号"></div>
+            <div class="f"><label for="oInv">適格請求書発行事業者 登録番号</label><input id="oInv" class="num" placeholder="例：T1234567890123"></div>
+          </div>
+          <div class="acts"><button type="button" id="oSave">事務所の情報を保存</button></div>
+        </details>
+        <div class="box">
+          <div class="grid3">
+            <div class="f"><label for="eNo">見積番号</label><input id="eNo" class="num"></div>
+            <div class="f"><label for="eDate">見積日</label><input id="eDate" type="date"></div>
+            <div class="f"><label for="eTax">消費税</label><select id="eTax"><option value="in">内税（単価に含む）</option><option value="out">外税（別途加算）</option></select></div>
+          </div>
+          <div class="f"><label for="eSubj">件名</label><input id="eSubj"></div>
+          <p class="msg" style="margin:0 0 6px">見出しの行は数量と単価を空欄に。字下げするときは品名の先頭に全角スペースを入れてください。</p>
+          <table class="items"><thead><tr><th>品番・品名</th><th>区分</th><th>数量</th><th>単位</th><th>単価（円）</th><th class="r">金額</th><th></th></tr></thead><tbody id="eItems"></tbody></table>
+          <datalist id="itemNames"></datalist>
+          <div class="acts"><button type="button" id="eAdd">＋ 行を追加</button></div>
+          <div class="f" style="margin-top:14px"><label for="eNote">表の下に入れる文（お預かり金のことなど）</label><textarea id="eNote"></textarea></div>
+          <div class="acts">
+            <button type="button" class="pri" id="eSave">見積書を保存</button>
+            <button type="button" id="ePdf">PDFで保存</button>
+            <button type="button" id="ePrint" hidden>印刷</button>
+          </div>
+          <div class="msg" id="eMsg"></div>
+        </div>
+        <div class="paperwrap"><div id="paper"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast"><span id="tMsg"></span><button type="button" id="undo">元に戻す</button></div>
+<div class="dlg" id="dlg"><div><p id="dMsg"></p><div class="acts"><button type="button" class="pri" id="dOk">削除する</button><button type="button" id="dNo">やめる</button></div></div></div>
+<script>
+{
+const $ = id => document.getElementById(id);
+const F = ["no","date","name","fee","client","addr","cert","note"];
+const PRESET = ["建設業許可申請（新規）","建設業許可申請（更新）","建設業決算変更届","経営事項審査申請","産業廃棄物収集運搬業許可申請","古物商許可申請","飲食店営業許可申請","農地法第3条許可申請","農地法第5条許可申請","車庫証明申請","自動車登録","在留資格認定証明書交付申請","在留期間更新許可申請","遺産分割協議書作成","相続関係説明図作成","遺言書作成支援","会社定款作成","内容証明郵便作成","契約書作成","補助金申請支援"];
+const KINDS = ["相談","受任","見積","書類収集","書類作成","依頼者確認","申請・提出","補正","審査中","許可・完了","納品","請求","入金","その他"];
+const DONE = new Set(["許可・完了","納品","入金"]);
+let evEdit = null, dlgAct = null;
+let db = null, col = null, rows = [], editId = null, lastDel = null, toastT = 0, newId = null, mode = null;
+const LS = "jikenbo.v1";
+const lsRead = () => { try { return JSON.parse(localStorage.getItem(LS) || "{}"); } catch (e) { return {}; } };
+const lsWrite = o => localStorage.setItem(LS, JSON.stringify(o));
+const lsRows = () => Object.entries(lsRead()).map(([id, v]) => ({id, ...v}));
+const OFF = "jikenbo.office";
+let office = {};
+function loadOfficeLocal() { try { office = JSON.parse(localStorage.getItem(OFF) || "{}"); } catch (e) { office = {}; } }
+const newKey = () => col ? col.doc().id : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+async function put(id, body) {
+  if (mode === "view") throw new Error("readonly");
+  if (mode === "cloud") return col.doc(id).set(body);
+  if (mode === "file") { await fileSync(); fdata.rows[id] = {...body, updatedAt: new Date().toISOString()}; await fileWrite(); return afterFile(); }
+  const o = lsRead(); o[id] = body; lsWrite(o); afterLocal();
+}
+async function drop(id) {
+  if (mode === "view") throw new Error("readonly");
+  if (mode === "cloud") return col.doc(id).delete();
+  if (mode === "file") { await fileSync(); fdata.rows[id] = {deleted: true, updatedAt: new Date().toISOString()}; await fileWrite(); return afterFile(); }
+  const o = lsRead(); delete o[id]; lsWrite(o); afterLocal();
+}
+function afterLocal() {
+  loadOfficeLocal();
+  rows = lsRows(); fillYears(); fillNames();
+  if (editId && !rows.find(r => r.id === editId)) resetForm(); else render();
+}
+function saveFile(name, text, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(text instanceof Blob ? text : new Blob([text], {type}));
+  a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+function startLocal() {
+  try { localStorage.setItem(LS + ".t", "1"); localStorage.removeItem(LS + ".t"); }
+  catch (e) { $("list").innerHTML = `<tr><td colspan="7" class="empty">このブラウザではデータを保存できません。</td></tr>`; return; }
+  mode = "local";
+  $("where").textContent = "このパソコンのブラウザに保存しています。定期的に「バックアップを保存」してください。";
+  $("bk").hidden = false; $("ePrint").hidden = false;
+  afterLocal();
+  $("no").value = nextNo($("date").value);
+}
+
+// ---------- iCloud Drive などのデータファイル ----------
+const FS_OK = "showSaveFilePicker" in window && "indexedDB" in window;
+let fh = null, fdata = {rows: {}, office: {}, officeAt: ""};
+const idb = (op, val) => new Promise((ok, ng) => {
+  const rq = indexedDB.open("jikenbo", 1);
+  rq.onupgradeneeded = () => rq.result.createObjectStore("kv");
+  rq.onerror = () => ng(rq.error);
+  rq.onsuccess = () => { try { const tx = rq.result.transaction("kv", op === "get" ? "readonly" : "readwrite"); const st = tx.objectStore("kv");
+    const r = op === "get" ? st.get("fh") : op === "del" ? st.delete("fh") : st.put(val, "fh"); r.onsuccess = () => ok(r.result); r.onerror = () => ng(r.error); } catch (e) { ng(e); } };
+});
+async function fileRead() {
+  const t = await (await fh.getFile()).text();
+  if (!t.trim()) return {rows: {}, office: {}, officeAt: ""};
+  const j = JSON.parse(t);
+  if (j.app !== "jikenbo") throw new Error("notjikenbo");
+  return {rows: j.rows || {}, office: j.office || {}, officeAt: j.officeAt || ""};
+}
+function mergeData(a, b) {
+  const out = {...a.rows};
+  Object.entries(b.rows || {}).forEach(([id, v]) => { if (!out[id] || (v.updatedAt || "") > (out[id].updatedAt || "")) out[id] = v; });
+  const bNew = (b.officeAt || "") > (a.officeAt || "");
+  return {rows: out, office: bNew ? (b.office || {}) : (a.office || {}), officeAt: bNew ? b.officeAt : a.officeAt};
+}
+async function fileSync() { fdata = mergeData(fdata, await fileRead()); }
+async function fileWrite() {
+  const w = await fh.createWritable();
+  await w.write(JSON.stringify({app: "jikenbo", v: 2, savedAt: new Date().toISOString(), rows: fdata.rows, office: fdata.office, officeAt: fdata.officeAt}, null, 1));
+  await w.close();
+}
+function afterFile() {
+  office = {...fdata.office};
+  rows = Object.entries(fdata.rows).filter(([, v]) => !v.deleted).map(([id, v]) => ({id, ...v}));
+  fillYears(); fillNames();
+  if (editId && !rows.find(r => r.id === editId)) resetForm(); else render();
+}
+function bar(html, acts) {
+  $("fbText").innerHTML = html;
+  $("fbActs").innerHTML = acts.map(([id, label, pri]) => `<button type="button" id="${id}"${pri ? ' class="pri"' : ""}>${label}</button>`).join("");
+  $("fileBar").hidden = false;
+}
+async function connectFile(handle, migrate) {
+  fh = handle;
+  fdata = {rows: {}, office: {}, officeAt: ""};
+  await fileSync();
+  if (migrate && localStorage.getItem(LS + ".moved") !== "1") {
+    const loc = {rows: lsRead(), office: (() => { try { return JSON.parse(localStorage.getItem(OFF) || "{}"); } catch (e) { return {}; } })(), officeAt: ""};
+    const n0 = Object.keys(fdata.rows).length;
+    fdata = mergeData(loc, fdata);
+    if (!fdata.office.oName && loc.office.oName) { fdata.office = loc.office; fdata.officeAt = new Date().toISOString(); }
+    if (Object.keys(fdata.rows).length !== n0 || Object.keys(loc.rows).length) await fileWrite();
+    localStorage.setItem(LS + ".moved", "1");
+  }
+  try { await idb("put", fh); } catch (e) {}
+  mode = "file";
+  $("fileBar").hidden = true;
+  $("where").textContent = "データファイル「" + fh.name + "」に保存しています。iCloud Drive に置けば、もう一台の Mac と同期されます。";
+  $("bk").hidden = false; $("ePrint").hidden = false; $("fSwitch").hidden = false;
+  afterFile();
+  if (!editId) $("no").value = nextNo($("date").value);
+}
+const PICK = {types: [{description: "事件簿データ", accept: {"application/json": [".json"]}}]};
+async function pickNew() {
+  try { const h = await window.showSaveFilePicker({...PICK, suggestedName: "事件簿データ.json"}); const w = await h.createWritable(); await w.write(""); await w.close(); await connectFile(h, true); }
+  catch (e) { if (e && e.name !== "AbortError") msg("データファイルを作れませんでした。", true); }
+}
+async function pickOpen() {
+  try { const [h] = await window.showOpenFilePicker(PICK); await connectFile(h, true); }
+  catch (e) { if (e && e.name === "AbortError") return; msg(e && e.message === "notjikenbo" ? "このファイルは事件簿のデータではありません。" : "データファイルを開けませんでした。", true); }
+}
+function setupBar() {
+  bar(`<b>データファイルを決めてください</b>iCloud Drive にデータファイルを置くと、Mac mini と MacBook Air で同じ記録を使えます。1台目は「新しく作る」、2台目は「既存のファイルを開く」を選びます。いまこのブラウザにある記録は、自動でファイルに移します。`,
+    [["fbNew", "新しく作る", true], ["fbOpen", "既存のファイルを開く"]]);
+  $("fbNew").onclick = pickNew; $("fbOpen").onclick = pickOpen;
+}
+async function startFileMode() {
+  let h = null;
+  try { h = await idb("get"); } catch (e) {}
+  if (!h) { startLocal(); setupBar(); return; }
+  let p = "prompt";
+  try { p = await h.queryPermission({mode: "readwrite"}); } catch (e) {}
+  if (p === "granted") { try { await connectFile(h, false); return; } catch (e) {} }
+  $("list").innerHTML = `<tr><td colspan="7" class="empty">データファイルへの接続を待っています。</td></tr>`;
+  bar(`<b>データファイル「${esc(h.name)}」に接続します</b>ボタンを押して、ファイルの読み書きを許可してください。Chrome で「毎回許可する」を選ぶと、次からはこの確認が出なくなります。`,
+    [["fbGo", "接続する", true], ["fbOther", "別のファイルを選ぶ"]]);
+  $("fbGo").onclick = async () => {
+    try { if (await h.requestPermission({mode: "readwrite"}) === "granted") await connectFile(h, false); }
+    catch (e) { msg("データファイルを開けませんでした。iCloud Drive にファイルがあるか確かめてください。", true); }
+  };
+  $("fbOther").onclick = () => { setupBar(); };
+}
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState !== "visible" || mode !== "file") return;
+  try { await fileSync(); afterFile(); } catch (e) {}
+});
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const yen = n => (n === null || n === undefined || n === "" || isNaN(n)) ? "" : "¥" + Number(n).toLocaleString("ja-JP");
+const pad = (n, w) => String(n).padStart(w, "0");
+const today = () => { const d = new Date(); return d.getFullYear() + "-" + pad(d.getMonth() + 1, 2) + "-" + pad(d.getDate(), 2); };
+const fmtDate = s => s ? s.replace(/-/g, "/") : "";
+const wareki = s => {
+  if (!s) return "";
+  const [y, m, d] = s.split("-").map(Number);
+  if (y > 2019 || (y === 2019 && m >= 5)) return "令和" + (y === 2019 ? "元" : y - 2018) + "年" + m + "月" + d + "日";
+  if (y >= 1989) return "平成" + (y === 1989 ? "元" : y - 1988) + "年" + m + "月" + d + "日";
+  return "";
+};
+const msg = (t, err) => { $("msg").textContent = t; $("msg").className = "msg" + (err ? " err" : ""); };
+
+function nextNo(dateStr) {
+  const y = (dateStr || today()).slice(0, 4);
+  let max = 0;
+  rows.forEach(r => { const m = String(r.no || "").match(/^(\d{4})-(\d+)$/); if (m && m[1] === y) max = Math.max(max, +m[2]); });
+  return y + "-" + pad(max + 1, 3);
+}
+
+function fillNames() {
+  const set = new Set(PRESET);
+  rows.forEach(r => r.name && set.add(r.name));
+  $("names").innerHTML = [...set].map(n => `<option value="${esc(n)}">`).join("");
+}
+
+function fillYears() {
+  const cur = $("yr").value;
+  const ys = [...new Set(rows.map(r => (r.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+  $("yr").innerHTML = `<option value="">すべての年</option>` + ys.map(y => `<option value="${y}">${y}年</option>`).join("");
+  if (ys.includes(cur)) $("yr").value = cur;
+}
+
+function view() {
+  const q = $("q").value.trim().toLowerCase(), y = $("yr").value, dir = $("sort").value;
+  let v = rows.filter(r => (!y || (r.date || "").startsWith(y)) &&
+    (!q || [r.no, r.name, r.client, r.addr, r.cert, r.note, ...(r.events || []).map(e => (e.kind || "") + " " + e.text)].join(" ").toLowerCase().includes(q)));
+  v.sort((a, b) => {
+    const k = (a.date || "").localeCompare(b.date || "") || String(a.no || "").localeCompare(String(b.no || ""), "ja", {numeric: true});
+    return dir === "asc" ? k : -k;
+  });
+  return v;
+}
+
+function render() {
+  const v = view();
+  $("sCount").textContent = v.length;
+  $("sFee").textContent = yen(v.reduce((s, r) => s + (Number(r.fee) || 0), 0)) || "¥0";
+  $("sLabel").textContent = $("yr").value ? $("yr").value + "年の件数" : "表示中の件数";
+  renderDetail();
+  if (!v.length) {
+    $("list").innerHTML = `<tr><td colspan="7" class="empty">${rows.length ? "条件に合う案件はありません。" : "まだ記入がありません。左の欄から最初の案件を記入してください。"}</td></tr>`;
+    return;
+  }
+  $("list").innerHTML = v.map(r => `<tr data-id="${esc(r.id)}" class="${r.id === editId ? "sel" : ""}${r.id === newId ? " new" : ""}">
+    <td class="no num" data-l="受託番号">${esc(r.no)}</td>
+    <td class="dt num" data-l="受託年月日"><span>${esc(fmtDate(r.date))}<span class="wa">${esc(wareki(r.date))}</span></span></td>
+    <td class="cl" data-l="依頼者"><span><b>${esc(r.client)}</b><span>${esc(r.addr)}</span></span></td>
+    <td class="nm1" data-l="案件の名称"><span>${esc(r.name)}${(l => l ? `<span class="latest"><b>${esc(l.kind || "経過")}</b> ${esc(fmtDate(l.date))}</span>` : "")(latest(r))}</span></td>
+    <td class="r num" data-l="報酬額">${esc(yen(r.fee))}</td>
+    <td class="num" data-l="職務上請求書№">${esc(r.cert)}</td>
+    <td class="note" data-l="備考">${esc(r.note)}</td></tr>`).join("");
+  newId = null;
+}
+
+function resetForm() {
+  editId = null;
+  F.forEach(k => $(k).value = "");
+  $("date").value = today();
+  $("no").value = nextNo($("date").value);
+  $("fTitle").textContent = "新しい案件を記入";
+  $("fEdit").hidden = true; $("del").hidden = true;
+  $("detail").hidden = true; $("listView").hidden = false; evReset();
+  render();
+}
+
+function loadForm(id) {
+  const r = rows.find(x => x.id === id); if (!r) return;
+  editId = id;
+  F.forEach(k => $(k).value = r[k] ?? "");
+  $("fTitle").textContent = "受託番号 " + (r.no || "") + " を編集";
+  $("fEdit").hidden = false; $("del").hidden = false;
+  msg("");
+  if ($("detail").hidden || estFor !== id) { evReset(); showTab("ev"); }
+  $("detail").hidden = false; $("listView").hidden = true;
+  render();
+  if (window.matchMedia("(max-width:1150px)").matches) $("frm").scrollIntoView({behavior: "smooth", block: "start"});
+}
+
+$("list").addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) loadForm(tr.dataset.id); });
+["q", "yr", "sort"].forEach(id => $(id).addEventListener("input", render));
+$("clear").addEventListener("click", () => { resetForm(); msg(""); });
+$("date").addEventListener("change", () => { if (!editId && /^\d{4}-\d+$/.test($("no").value) && $("no").value.slice(0, 4) !== $("date").value.slice(0, 4)) $("no").value = nextNo($("date").value); });
+
+$("frm").addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!mode) { msg("保存先に接続できていません。少し待ってからもう一度お試しください。", true); return; }
+  const d = {};
+  F.forEach(k => d[k] = $(k).value.trim());
+  const fee = d.fee.replace(/[,，¥円\s]/g, "").replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  if (fee && isNaN(Number(fee))) { msg("報酬額は数字で入力してください。", true); $("fee").focus(); return; }
+  d.fee = fee ? Number(fee) : null;
+  const dup = rows.find(r => r.no === d.no && r.id !== editId);
+  if (dup) { msg("受託番号 " + d.no + " はすでに使われています。", true); $("no").focus(); return; }
+  const now = new Date().toISOString();
+  $("save").disabled = true;
+  try {
+    if (editId) {
+      const old = rows.find(r => r.id === editId) || {};
+      const {id: _x, ...ob} = old;
+      await put(editId, {...ob, ...d, createdAt: old.createdAt || now, updatedAt: now});
+      $("fTitle").textContent = "受託番号 " + d.no + " を編集";
+      msg("受託番号 " + d.no + " を更新しました。");
+    } else {
+      newId = newKey();
+      await put(newId, {...d, events: [{id: newKey(), date: d.date, kind: "受任", text: "受託（" + d.name + "）", at: now}], createdAt: now, updatedAt: now});
+      resetForm();
+      msg("受託番号 " + d.no + " を保存しました。");
+    }
+  } catch (err) {
+    msg(err && err.code === "quota_exceeded" ? "保存できる件数の上限に達しました。" : "保存できませんでした。もう一度お試しください。", true);
+  } finally { $("save").disabled = false; }
+});
+
+$("del").addEventListener("click", () => {
+  const r = rows.find(x => x.id === editId); if (!r) return;
+  ask("受託番号 " + r.no + "「" + r.name + "」を、経過記録も含めて削除しますか？", delCase);
+});
+function ask(t, fn) { $("dMsg").textContent = t; dlgAct = fn; $("dlg").classList.add("on"); $("dNo").focus(); }
+$("dNo").addEventListener("click", () => $("dlg").classList.remove("on"));
+$("dOk").addEventListener("click", () => { $("dlg").classList.remove("on"); const f = dlgAct; dlgAct = null; if (f) f(); });
+async function delCase() {
+  const r = rows.find(x => x.id === editId); if (!r || !mode) return;
+  try {
+    const {id, ...body} = r;
+    await drop(id);
+    lastDel = {id, body};
+    resetForm(); msg("");
+    $("tMsg").textContent = "受託番号 " + r.no + " を削除しました";
+    $("toast").classList.add("on");
+    clearTimeout(toastT); toastT = setTimeout(() => $("toast").classList.remove("on"), 8000);
+  } catch (err) { msg("削除できませんでした。", true); }
+}
+$("undo").addEventListener("click", async () => {
+  $("toast").classList.remove("on");
+  if (!lastDel || !mode) return;
+  try { newId = lastDel.id; await put(lastDel.id, lastDel.body); lastDel = null; }
+  catch (err) { msg("元に戻せませんでした。", true); }
+});
+
+function latest(r) {
+  const ev = (r.events || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.at || "").localeCompare(a.at || ""));
+  return ev[0] || null;
+}
+const days = (a, b) => Math.round((new Date(b) - new Date(a)) / 864e5);
+function renderDetail() {
+  if ($("detail").hidden || !editId) return;
+  if (!$("pgEst").hidden) drawPaper();
+  { const r0 = rows.find(x => x.id === editId); if (r0) drawFolder(r0); }
+  const r = rows.find(x => x.id === editId); if (!r) return;
+  $("dNo2").textContent = r.no || "";
+  $("dName").textContent = r.client || "";
+  $("dSub").innerHTML = [r.name, mode === "view" ? "" : r.addr, "受託 " + fmtDate(r.date), r.fee ? "報酬 " + yen(r.fee) : ""].filter(Boolean).map(t => `<span style="white-space:nowrap">${esc(t)}</span>`).join("　／　");
+  const ev = (r.events || []).slice().sort((a, b) => (b.date || "").localeCompare(a.date || "") || (b.at || "").localeCompare(a.at || ""));
+  $("tl").innerHTML = ev.length ? ev.map(e => {
+    const n = r.date && e.date ? days(r.date, e.date) : null;
+    return `<li data-ev="${esc(e.id)}" class="${DONE.has(e.kind) ? "done" : ""}${e.id === evEdit ? " sel" : ""}">
+      <div class="when num"><b>${esc(fmtDate(e.date))}</b><span>${n === null ? "" : n === 0 ? "受託日" : n > 0 ? "受託から" + n + "日目" : "受託の" + (-n) + "日前"}</span></div>
+      <div class="rail"></div>
+      <div class="ev">${e.kind ? `<span class="kind">${esc(e.kind)}</span><br>` : ""}<span class="txt">${esc(e.text)}</span></div></li>`;
+  }).join("") : `<li style="display:block" class="empty">まだ経過の記録がありません。上の欄から記録してください。</li>`;
+}
+function evReset() {
+  evEdit = null;
+  $("evDate").value = today(); $("evKind").value = ""; $("evText").value = "";
+  $("evTitle").textContent = "経過を記録する"; $("evSave").textContent = "記録する";
+  $("evCancel").hidden = true; $("evDel").hidden = true;
+}
+$("kinds").innerHTML = KINDS.map(k => `<option value="${k}">`).join("");
+$("back").addEventListener("click", () => { resetForm(); msg(""); });
+$("evCancel").addEventListener("click", () => { evReset(); renderDetail(); });
+$("tl").addEventListener("click", e => {
+  if (mode === "view") return;
+  const li = e.target.closest("li[data-ev]"); if (!li) return;
+  const r = rows.find(x => x.id === editId); const ev = r && (r.events || []).find(x => x.id === li.dataset.ev); if (!ev) return;
+  evEdit = ev.id;
+  $("evDate").value = ev.date || ""; $("evKind").value = ev.kind || ""; $("evText").value = ev.text || "";
+  $("evTitle").textContent = "記録を編集"; $("evSave").textContent = "更新する";
+  $("evCancel").hidden = false; $("evDel").hidden = false;
+  renderDetail(); $("evf").scrollIntoView({behavior: "smooth", block: "nearest"}); $("evText").focus();
+});
+async function saveEvents(r, events) {
+  const {id, ...body} = r;
+  await put(id, {...body, events, updatedAt: new Date().toISOString()});
+}
+$("evf").addEventListener("submit", async e => {
+  e.preventDefault();
+  const r = rows.find(x => x.id === editId); if (!r || !mode) return;
+  const item = {date: $("evDate").value, kind: $("evKind").value.trim(), text: $("evText").value.trim()};
+  if (!item.date || !item.text) return;
+  const list = (r.events || []).slice();
+  if (evEdit) { const i = list.findIndex(x => x.id === evEdit); if (i >= 0) list[i] = {...list[i], ...item}; }
+  else list.push({id: newKey(), ...item, at: new Date().toISOString()});
+  $("evSave").disabled = true;
+  try { await saveEvents(r, list); evReset(); renderDetail(); render(); }
+  catch (err) { msg("記録を保存できませんでした。", true); }
+  finally { $("evSave").disabled = false; }
+});
+$("evDel").addEventListener("click", () => {
+  const r = rows.find(x => x.id === editId); if (!r || !evEdit) return;
+  const ev = (r.events || []).find(x => x.id === evEdit);
+  ask(fmtDate(ev.date) + "「" + ev.text + "」の記録を削除しますか？", async () => {
+    try { await saveEvents(r, (r.events || []).filter(x => x.id !== evEdit)); evReset(); render(); }
+    catch (err) { msg("削除できませんでした。", true); }
+  });
+});
+
+// ---------- フォルダ ----------
+const SC_NAME = "フォルダを開く";
+const cleanPath = p => { p = String(p || "").trim().replace(/^["']|["']$/g, ""); if (/^file:\/\//.test(p)) { try { p = decodeURIComponent(p.replace(/^file:\/\/(localhost)?/, "")); } catch (e) {} } return p; };
+function setFolderLink(p) {
+  const a = $("fOpen");
+  if (p) { a.href = "shortcuts://run-shortcut?name=" + encodeURIComponent(SC_NAME) + "&input=text&text=" + encodeURIComponent(p); a.setAttribute("aria-disabled", "false"); a.title = p; }
+  else { a.href = "#"; a.setAttribute("aria-disabled", "true"); a.removeAttribute("title"); }
+}
+let folderFor = null;
+function drawFolder(r) {
+  if (folderFor !== r.id || document.activeElement !== $("fPath")) $("fPath").value = r.folder || "";
+  folderFor = r.id;
+  setFolderLink(r.folder || "");
+}
+$("fSave").addEventListener("click", async () => {
+  const r = rows.find(x => x.id === editId); if (!r || !mode) return;
+  const p = cleanPath($("fPath").value); $("fPath").value = p;
+  const {id, ...body} = r;
+  try { await put(id, {...body, folder: p, updatedAt: new Date().toISOString()}); msg(p ? "フォルダを登録しました。" : "フォルダの登録を外しました。"); }
+  catch (e) { msg("フォルダを保存できませんでした。", true); }
+});
+$("fPath").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); $("fSave").click(); } });
+
+// ---------- 見積書 ----------
+const ITEM_NAMES = ["相続人調査・相続財産調査","遺産分割協議書作成","預金口座手続","　司法書士報酬","　登録免許税","収入証紙代（申請手数料）","収入印紙代","登記事項証明書 取得費","住民票・戸籍謄本 取得費","郵送料","交通費","その他諸費用"];
+const OFFK = ["oName","oPerson","oZip","oAddr","oTel","oFax","oMail","oReg","oInv"];
+let est = null, estFor = null;
+const ymd = s => { if (!s) return ""; const [y, m, d] = s.split("-"); return y + "年" + m + "月" + d + "日"; };
+const n0 = v => (v === "" || v === null || v === undefined) ? "" : Number(v).toLocaleString("ja-JP");
+const isHead = i => (i.qty === "" || i.qty === null || i.qty === undefined) && !Number(i.price);
+const amt = i => isHead(i) ? 0 : (Number(i.qty) || 0) * (Number(i.price) || 0);
+function showTab(t) {
+  $("tabEv").classList.toggle("on", t === "ev"); $("tabEst").classList.toggle("on", t === "est");
+  $("pgEv").hidden = t !== "ev"; $("pgEst").hidden = t !== "est";
+  if (t === "est") openEst();
+}
+$("tabEv").addEventListener("click", () => showTab("ev"));
+$("tabEst").addEventListener("click", () => showTab("est"));
+function estNo(date) {
+  const k = (date || today()).replace(/-/g, "");
+  let max = 0;
+  rows.forEach(r => { const m = r.est && String(r.est.no || "").match(/^(\d{8})-(\d+)$/); if (m && m[1] === k && r.id !== estFor) max = Math.max(max, +m[2]); });
+  return k + "-" + pad(max + 1, 3);
+}
+function migrate(e) {
+  e.items = (e.items || []).map(i => ({name: i.name || "", kind: (i.kind === "実費" || i.kind === "out") ? "out" : "10", qty: i.qty ?? 1, unit: i.unit ?? "件", price: i.price ?? 0}));
+  if (!e.tax) e.tax = "in";
+  return e;
+}
+function openEst() {
+  const r = rows.find(x => x.id === editId); if (!r) return;
+  estFor = r.id;
+  if (mode === "view" && !r.est) { est = null; $("eItems").innerHTML = ""; $("paper").innerHTML = `<p style="padding:40px;text-align:center;color:#777">この案件の見積書はまだ作られていません。</p>`; $("eMsg").textContent = ""; return; }
+  const d = today();
+  est = r.est ? migrate(JSON.parse(JSON.stringify(r.est))) : {
+    no: estNo(d), date: d, subject: r.name || "", tax: "in",
+    items: [{name: r.name || "", kind: "10", qty: 1, unit: "式", price: Number(r.fee) || 0}],
+    note: ""
+  };
+  $("eNo").value = est.no; $("eDate").value = est.date; $("eTax").value = est.tax; $("eSubj").value = est.subject; $("eNote").value = est.note || "";
+  OFFK.forEach(k => $(k).value = office[k] || "");
+  $("offBox").open = !office.oName;
+  $("eMsg").textContent = "";
+  drawItems(); drawPaper();
+  $("pgEst").querySelectorAll(".box input, .box select, .box textarea").forEach(el => el.disabled = mode === "view");
+}
+function calc() {
+  let t10 = 0, out = 0;
+  est.items.forEach(i => { if (i.kind === "out") out += amt(i); else t10 += amt(i); });
+  if (est.tax === "out") { const tax = Math.round(t10 * 0.1); return {sub: t10 + out, tax, t10, out, total: t10 + out + tax}; }
+  const tax = Math.round(t10 * 10 / 110);
+  return {sub: t10 + out, tax, t10, out, total: t10 + out};
+}
+function drawItems() {
+  $("eItems").innerHTML = est.items.map((i, n) => `<tr data-n="${n}">
+    <td><input data-k="name" list="itemNames" value="${esc(i.name)}" aria-label="品番・品名"></td>
+    <td class="k"><select data-k="kind" aria-label="区分"><option value="10"${i.kind !== "out" ? " selected" : ""}>10%対象</option><option value="out"${i.kind === "out" ? " selected" : ""}>対象外</option></select></td>
+    <td class="q"><input data-k="qty" class="num" inputmode="decimal" value="${esc(i.qty)}" aria-label="数量"></td>
+    <td class="u"><input data-k="unit" value="${esc(i.unit)}" aria-label="単位"></td>
+    <td class="p"><input data-k="price" class="num" inputmode="numeric" value="${esc(i.price === 0 && isHead(i) ? "" : i.price)}" aria-label="単価"></td>
+    <td class="amt num">${isHead(i) ? "見出し" : n0(amt(i))}</td>
+    <td><button type="button" class="ghost up" data-up="${n}" aria-label="上へ移動"${n ? "" : " disabled"}>↑</button><button type="button" class="ghost x" data-del="${n}" aria-label="この行を削除">×</button></td></tr>`).join("");
+}
+const toNum = v => { const t = String(v).replace(/[,，¥円\s]/g, "").replace(/[０-９．]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)); return t === "" ? "" : (isNaN(Number(t)) ? "" : Number(t)); };
+$("eItems").addEventListener("input", e => {
+  const tr = e.target.closest("tr[data-n]"); if (!tr) return;
+  const i = est.items[+tr.dataset.n], k = e.target.dataset.k;
+  i[k] = (k === "qty" || k === "price") ? toNum(e.target.value) : e.target.value;
+  tr.querySelector(".amt").textContent = isHead(i) ? "見出し" : n0(amt(i));
+  drawPaper();
+});
+$("eItems").addEventListener("click", e => {
+  const b = e.target.closest("[data-del]"), u = e.target.closest("[data-up]");
+  if (b) est.items.splice(+b.dataset.del, 1);
+  else if (u) { const n = +u.dataset.up; if (n > 0) [est.items[n - 1], est.items[n]] = [est.items[n], est.items[n - 1]]; }
+  else return;
+  drawItems(); drawPaper();
+});
+$("eAdd").addEventListener("click", () => { est.items.push({name: "", kind: "10", qty: 1, unit: "件", price: ""}); drawItems(); drawPaper(); $("eItems").querySelector("tr:last-child input").focus(); });
+[["eNo","no"],["eDate","date"],["eTax","tax"],["eSubj","subject"],["eNote","note"]].forEach(([id, k]) => $(id).addEventListener("input", () => { est[k] = $(id).value; drawPaper(); }));
+OFFK.forEach(k => $(k).addEventListener("input", () => { office[k] = $(k).value.trim(); drawPaper(); }));
+$("itemNames").innerHTML = ITEM_NAMES.map(n => `<option value="${n}">`).join("");
+function drawPaper() {
+  const r = rows.find(x => x.id === estFor); if (!r || !est) return;
+  const c = calc(), o = office;
+  const lines = est.items.filter(i => String(i.name).trim() || amt(i));
+  const fromLines = [
+    o.oName ? `<div class="on">${esc(o.oName)}</div>` : "",
+    o.oPerson ? `<div class="on">${esc(o.oPerson)}</div>` : "",
+    (o.oZip || o.oAddr) ? `<div class="gap"></div>` + (o.oZip ? `<div>〒${esc(o.oZip.replace(/^〒/, ""))}</div>` : "") + (o.oAddr ? `<div style="white-space:pre-line">${esc(o.oAddr)}</div>` : "") : "",
+    (o.oTel || o.oFax || o.oMail) ? `<div class="gap"></div>` + (o.oTel ? `<div>TEL: ${esc(o.oTel)}</div>` : "") + (o.oFax ? `<div>FAX: ${esc(o.oFax)}</div>` : "") + (o.oMail ? `<div>${esc(o.oMail)}</div>` : "") : "",
+    (o.oReg || o.oInv) ? `<div class="gap"></div>` + (o.oReg ? `<div>行政書士登録番号: ${esc(o.oReg)}</div>` : "") + (o.oInv ? `<div>登録番号: ${esc(o.oInv)}</div>` : "") : ""
+  ].join("");
+  $("paper").innerHTML = `<div class="pmeta">${esc(ymd(est.date))}<br>見積番号: ${esc(est.no)}</div>
+  <h1>見積書</h1>
+  <div class="mid"><div>
+    <div class="nm">${esc(r.client)} 様</div>
+    <p class="subj">件名 : ${esc(est.subject)}</p>
+    <p class="lead">下記のとおりお見積申し上げます。</p>
+    <div class="sum"><span>お見積金額</span><span>¥ ${n0(c.total) || 0} -</span></div>
+  </div><div class="from">${fromLines}</div></div>
+  <table class="it"><colgroup><col><col style="width:104px"><col style="width:101px"><col style="width:121px"></colgroup>
+  <thead><tr><th>品番・品名</th><th>数量</th><th>単価</th><th>金額</th></tr></thead><tbody>
+  ${lines.map(i => isHead(i)
+    ? `<tr><td class="nm2">${esc(i.name)}</td><td></td><td></td><td></td></tr>`
+    : `<tr><td class="nm2">${esc(i.name)}</td><td class="n">${esc(n0(i.qty))} ${esc(i.unit || "")}</td><td class="n">${n0(i.price) || 0}</td><td class="n">${n0(amt(i)) || 0}</td></tr>`).join("")}
+  <tr class="tt"><td></td><td class="tl2" colspan="2">小計</td><td class="n tl2">${n0(c.sub) || 0}</td></tr>
+  <tr class="tt"><td></td><td class="tl2" colspan="2">${est.tax === "out" ? "消費税 (10%)" : "消費税 (内税)"}</td><td class="n tl2">${est.tax === "out" ? n0(c.tax) || 0 : "(" + (n0(c.tax) || 0) + ")"}</td></tr>
+  <tr class="tt"><td></td><td class="tl2" colspan="2">合計</td><td class="n tl2">${n0(c.total) || 0}</td></tr>
+  </tbody></table>
+  <table class="brk"><colgroup><col style="width:126px"><col style="width:121px"><col style="width:64px"><col></colgroup>
+  <tr><td class="dl">10%対象</td><td class="n dr">${n0(c.t10) || 0}</td><td class="dl">消費税</td><td class="n dr">${n0(c.tax) || 0}</td></tr>
+  <tr><td class="dl">対象外</td><td class="n dr">${n0(c.out) || 0}</td><td class="dl">消費税</td><td class="n dr">―</td></tr></table>
+  ${est.note ? `<div class="pnote">${esc(est.note)}</div>` : ""}`;
+}
+async function saveEst(quiet) {
+  const r = rows.find(x => x.id === estFor); if (!r || !mode) return false;
+  const {id, ...body} = r;
+  try { await put(id, {...body, est: JSON.parse(JSON.stringify(est)), updatedAt: new Date().toISOString()}); if (!quiet) $("eMsg").textContent = "見積書を保存しました。"; return true; }
+  catch (e) { $("eMsg").textContent = "見積書を保存できませんでした。"; return false; }
+}
+$("eSave").addEventListener("click", () => saveEst(false));
+$("oSave").addEventListener("click", async () => {
+  OFFK.forEach(k => office[k] = $(k).value.trim());
+  try {
+    if (mode === "cloud") await col.doc("_office").set({...office});
+    else if (mode === "file") { await fileSync(); fdata.office = {...office}; fdata.officeAt = new Date().toISOString(); await fileWrite(); }
+    else localStorage.setItem(OFF, JSON.stringify(office));
+    $("eMsg").textContent = "事務所の情報を保存しました。"; $("offBox").open = false;
+  } catch (e) { $("eMsg").textContent = "事務所の情報を保存できませんでした。"; }
+});
+const loadJs = src => new Promise((ok, ng) => { if (document.querySelector(`script[src="${src}"]`)) return ok(); const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = ng; document.head.appendChild(s); });
+$("ePdf").addEventListener("click", async () => {
+  const r = rows.find(x => x.id === estFor); if (!r || !est) return;
+  $("ePdf").disabled = true; $("eMsg").textContent = "PDFを作っています…";
+  try {
+    if (mode !== "view") await saveEst(true);
+    await loadJs("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js");
+    await loadJs("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js");
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const cv = await html2canvas($("paper"), {scale: 2, backgroundColor: "#ffffff", useCORS: true});
+    const pdf = new window.jspdf.jsPDF({unit: "mm", format: "a4", orientation: "portrait"});
+    const W = 210, H = 297, ph = cv.height * W / cv.width;
+    const img = cv.toDataURL("image/jpeg", 0.95);
+    let y = 0;
+    do { if (y > 0) pdf.addPage(); pdf.addImage(img, "JPEG", 0, -y, W, ph); y += H; } while (y < ph - 1);
+    const blob = pdf.output("blob");
+    const name = "見積書_" + (est.no || r.no) + "_" + (r.client || "") + ".pdf";
+    if (mode === "local") saveFile(name, blob);
+    else { const dl = await claude.use("downloads"); if (!dl) throw new Error("dl"); await dl.save({filename: name, data: blob}); }
+    $("eMsg").textContent = "PDFを保存しました。";
+  } catch (e) {
+    $("eMsg").textContent = (e && e.code === "declined") ? "保存をやめました。" : "PDFを作れませんでした。インターネットにつながっているか確かめてください。" + (mode === "local" ? "「印刷」からPDFとして保存することもできます。" : "");
+  } finally { $("ePdf").disabled = false; }
+});
+$("ePrint").addEventListener("click", async () => { await saveEst(true); window.print(); });
+
+// ---------- 閲覧モード（iPhone など） ----------
+function showViewBar() { $("viewBar").hidden = false; }
+$("vbPick").addEventListener("click", () => $("vbFile").click());
+$("vbFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.app !== "jikenbo" || typeof j.rows !== "object") throw 0;
+    mode = "view";
+    document.documentElement.classList.add("ro");
+    office = {...(j.office || {})};
+    rows = Object.entries(j.rows).filter(([, v]) => !v.deleted).map(([id, v]) => ({id, ...v}));
+    const t = j.savedAt ? new Date(j.savedAt) : null;
+    $("vbText").innerHTML = `<b>閲覧中：</b>${esc(f.name)}` + (t ? `（${t.getMonth() + 1}月${t.getDate()}日 ${pad(t.getHours(), 2)}:${pad(t.getMinutes(), 2)}）` : "");
+    $("vbPick").textContent = "読み込み直す";
+    $("where").textContent = "";
+    fillYears(); fillNames();
+    resetForm();
+  } catch (err) {
+    $("vbText").textContent = "このファイルは事件簿のデータではありません。iCloud Drive の「事件簿データ.json」を選んでください。";
+  }
+});
+
+const HEAD = ["受託番号", "受託年月日", "依頼者の住所", "依頼者の氏名", "案件の名称", "報酬額", "職務上請求書№", "備考"];
+const lines = () => view().slice().reverse().map(r => [r.no, fmtDate(r.date), r.addr, r.client, r.name, r.fee ?? "", r.cert, r.note]);
+$("csv").addEventListener("click", async () => {
+  const q = v => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+  const text = "﻿" + [HEAD, ...lines()].map(a => a.map(q).join(",")).join("\r\n");
+  if (mode === "local") { saveFile("事件簿_" + today() + ".csv", text, "text/csv"); return; }
+  try {
+    const dl = await claude.use("downloads");
+    if (!dl) throw 0;
+    await dl.save({filename: "事件簿_" + today() + ".csv", data: text});
+  } catch (e) { msg("CSVを保存できませんでした。「表をコピー」をお使いください。", true); }
+});
+$("copy").addEventListener("click", async () => {
+  const text = [HEAD, ...lines()].map(a => a.map(v => String(v).replace(/[\t\n]/g, " ")).join("\t")).join("\n");
+  try { await navigator.clipboard.writeText(text); msg("表をコピーしました。Excel や Numbers に貼り付けられます。"); }
+  catch (e) { msg("コピーできませんでした。", true); }
+});
+
+$("date").value = today();
+$("no").value = nextNo(today());
+fillNames();
+
+$("fSwitch").addEventListener("click", setupBar);
+$("bkSave").addEventListener("click", () => {
+  const o = mode === "file" ? Object.fromEntries(Object.entries(fdata.rows).filter(([, v]) => !v.deleted)) : lsRead();
+  saveFile("事件簿バックアップ_" + today() + ".json", JSON.stringify({app: "jikenbo", v: 1, savedAt: new Date().toISOString(), rows: o, office}, null, 1), "application/json");
+  msg("バックアップを保存しました（" + Object.keys(o).length + "件）。");
+});
+$("bkLoad").addEventListener("click", () => $("bkFile").click());
+$("bkFile").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.app !== "jikenbo" || typeof j.rows !== "object") throw 0;
+    if (mode === "file") {
+      await fileSync(); let n = 0;
+      Object.entries(j.rows).forEach(([id, v]) => { const c = fdata.rows[id]; if (!c || (v.updatedAt || "") > (c.updatedAt || "")) { fdata.rows[id] = v; n++; } });
+      if (j.office && !fdata.office.oName) { fdata.office = j.office; fdata.officeAt = new Date().toISOString(); }
+      await fileWrite(); afterFile(); msg("バックアップから " + n + " 件を読み込みました。"); return;
+    }
+    const o = lsRead(); let n = 0;
+    Object.entries(j.rows).forEach(([id, v]) => { if (!o[id] || (v.updatedAt || "") > (o[id].updatedAt || "")) { o[id] = v; n++; } });
+    if (j.office && !localStorage.getItem(OFF)) localStorage.setItem(OFF, JSON.stringify(j.office));
+    lsWrite(o); afterLocal();
+    msg("バックアップから " + n + " 件を読み込みました。");
+  } catch (err) { msg("このファイルは事件簿のバックアップではありません。", true); }
+});
+
+if (location.protocol === "file:" || typeof window.claude === "undefined" || !window.claude || typeof window.claude.use !== "function") { if (FS_OK) startFileMode(); else { document.documentElement.classList.add("ro"); showViewBar(); $("list").innerHTML = `<tr><td colspan="7" class="empty">上の「データファイルを開いて見る」から、事件簿データ.json を選んでください。</td></tr>`; } }
+else (async () => {
+  const timer = setTimeout(() => { if (!rows.length) $("list").innerHTML = `<tr><td colspan="7" class="empty">保存先に接続できません。しばらくしてから開き直してください。</td></tr>`; }, 10000);
+  try {
+    const [d, u] = await Promise.all([claude.use("db"), claude.use("user")]);
+    const uid = u ? await u.id() : null;
+    showViewBar();
+    if (!d || !uid) { clearTimeout(timer); $("list").innerHTML = `<tr><td colspan="7" class="empty">この画面では保存先を使えません。claude.ai にサインインして開いてください。</td></tr>`; return; }
+    db = d; col = db.collection("data/users/" + uid); mode = "cloud";
+    $("where").textContent = "claude.ai のあなた専用の保存先に保存しています。";
+    let first = true;
+    col.onSnapshot(snap => {
+      if (mode === "view") return;
+      if (!snap.metadata.fromCache) clearTimeout(timer);
+      const offDoc = snap.docs.find(s => s.id === "_office");
+      office = offDoc ? {...offDoc.data()} : {};
+      rows = snap.docs.filter(s => !s.id.startsWith("_")).map(s => ({id: s.id, ...s.data()}));
+      fillYears(); fillNames();
+      if (first && !editId) { $("no").value = nextNo($("date").value); first = false; }
+      if (editId && !rows.find(r => r.id === editId)) resetForm(); else render();
+    }, err => {
+      clearTimeout(timer);
+      $("list").innerHTML = `<tr><td colspan="7" class="empty">データを読み込めませんでした。</td></tr>`;
+    });
+  } catch (e) {
+    clearTimeout(timer);
+    $("list").innerHTML = `<tr><td colspan="7" class="empty">保存先に接続できませんでした。</td></tr>`;
+    showViewBar();
+  }
+})();
+}
+</script>
+</body>
+</html>
